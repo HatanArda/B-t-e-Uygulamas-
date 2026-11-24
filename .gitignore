@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dev-dist/
+# OCR dosyaları npm install sırasında üretilir
+public/ocr/
+# Gizlilik: gerçek Excel ve fiş fotoğrafları depoya gönderilmez
+tests/fixtures/
+*.xlsx
+!tests/sample/*.xlsx
+test-results/
+.DS_Store
+*.local
