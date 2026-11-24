@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
 const PORT = 4179;
-const URL = `http://localhost:${PORT}/`;
+const URL = `http://localhost:${PORT}${process.env.BASE ?? '/'}`;
 const CIKTI = 'test-results';
 mkdirSync(CIKTI, { recursive: true });
 const GERCEK_EXCEL = 'tests/fixtures/harcamalar_13-14-11-2026.xlsx';
