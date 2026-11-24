@@ -19,7 +19,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tesseract.js": "^7.0.0",
-    "tesseract.js-core": "^7.0.0"
+    "tesseract.js-core": "^7.0.0",
+    "wasm-feature-detect": "^1.10.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

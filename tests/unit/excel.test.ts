@@ -49,7 +49,7 @@ describe('Excel dışa aktarma → içe aktarma', () => {
     ];
     const buf = await excelYaz(kayitlar);
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    await wb.xlsx.load(buf.buffer as ArrayBuffer);
     const ws = wb.getWorksheet('Harcamalar')!;
     expect((ws.getRow(1).values as unknown[]).slice(1)).toEqual(['Tarih', 'Kategori', 'Açıklama', 'Tür', 'Dükkân', 'Tutar (TL)', 'Kaynak', 'Ödeme']);
     const toplamHucre = ws.getRow(6).getCell(6).value as { formula: string; result: number };

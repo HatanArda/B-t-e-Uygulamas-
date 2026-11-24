@@ -100,9 +100,15 @@ function miktarBul(satir: string): { miktar: FisMiktar; bas: number; son: number
   };
 }
 
-function kdvBul(satir: string): number | undefined {
-  const m = /%\s?(\d{1,2})\b/.exec(satir);
-  return m ? parseInt(m[1], 10) : undefined;
+/**
+ * Tutardan önceki kısımdan KDV oranını ayırır. OCR "%1"i sık sık "S1", "$1", "51" ya da
+ * "%20"yi "5520" diye okur; bunları da tanır. Döndürülen "kalan" ürün adıdır.
+ */
+function kdvAyir(onTutar: string): { kdv?: number; kalan: string } {
+  const temiz = onTutar.replace(/[\s—–\-*]+$/, '');
+  const m = /(?:^|\s)(?:%\s?|[%Ss5$8«]{1,2})(0?1|8|10|18|20)$/.exec(temiz) ?? /%\s?(\d{1,2})\b/.exec(temiz);
+  if (!m) return { kalan: temiz };
+  return { kdv: parseInt(m[1], 10), kalan: (temiz.slice(0, m.index) + ' ' + temiz.slice(m.index + m[0].length)).trim() };
 }
 
 function harfSayisi(s: string): number {
@@ -114,9 +120,9 @@ function adTemizle(s: string): string {
   return s
     .replace(/%\s?\d{1,2}\b/g, ' ')
     .replace(/\b\d{8,}\b/g, ' ')
-    .replace(/[*¥#~_=|]+/g, ' ')
+    .replace(/[*¥#~_=|—–]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/^[\s.,:;-]+|[\s.,:;-]+$/g, '')
+    .replace(/^[\s.,:;—–-]+|[\s.,:;—–-]+$/g, '')
     .trim();
 }
 
@@ -192,7 +198,7 @@ export function fisAyristir(hamMetin: string): FisSonucu {
     if (!satir) { oncekiSadeceAd = null; continue; }
     const n = normalize(satir);
     const buyuk = satir.toLocaleUpperCase('tr-TR');
-    const sadeceAd = oncekiSadeceAd;
+    const sadeceAd: string | null = oncekiSadeceAd;
     oncekiSadeceAd = null;
 
     // Tarih / saat (fişin herhangi bir yerinde)
@@ -211,7 +217,10 @@ export function fisAyristir(hamMetin: string): FisSonucu {
     }
 
     // Kartın son 4 hanesi (bankanın adına güvenmiyoruz)
-    const kart = /[*X#•]{2,}[\s*X#•-]*(\d{4})(?![\d,.])/.exec(buyuk) ?? (/^kart no/.test(n) ? /(\d{4})\s*$/.exec(satir) : null);
+    // Maskeli kart numarası: "************1234", "5258 **** **** 4321"; OCR yıldızları bazen harf okur ("KKKK KKKK 1234")
+    const kart = /[*X#•]{2,}[\s*X#•-]*(\d{4})(?![\d,.])/.exec(buyuk)
+      ?? /(?:[*X#•KH]{3,}[\s-]*){2,}(\d{4})\s*$/.exec(buyuk)
+      ?? (/^kart (no|numarasi)/.test(n) ? /(\d{4})\s*$/.exec(satir) : null);
     if (kart) son4 = kart[1];
     if (/\bnakit\b/.test(n) && !/iade/.test(n)) nakit = true;
 
@@ -261,9 +270,10 @@ export function fisAyristir(hamMetin: string): FisSonucu {
       const geriTutar = sondakiTutar(geri);
       if (geriTutar && geriTutar.tutar > 0) {
         // "2 AD X 109,00   %10   *218,00" — miktar ve tutar aynı satırda
-        const adParca = adTemizle(geri.slice(0, geriTutar.bas));
+        const { kdv, kalan } = kdvAyir(geri.slice(0, geriTutar.bas));
+        const adParca = adTemizle(kalan);
         const ad = harfSayisi(adParca) >= 2 ? adParca : sadeceAd ?? '';
-        ogeler.push({ tip: 'kalem', kalem: kalemOlustur(ad, geriTutar.tutar, kdvBul(geri), mik.miktar) });
+        ogeler.push({ tip: 'kalem', kalem: kalemOlustur(ad, geriTutar.tutar, kdv, mik.miktar) });
       } else {
         ogeler.push({ tip: 'miktar', miktar: mik.miktar });
         if (sadeceAd) oncekiSadeceAd = sadeceAd; // ad → miktar → tutar sıralaması
@@ -272,9 +282,10 @@ export function fisAyristir(hamMetin: string): FisSonucu {
     }
 
     if (tutar && tutar.tutar > 0) {
-      const adParca = adTemizle(satir.slice(0, tutar.bas));
+      const { kdv, kalan } = kdvAyir(satir.slice(0, tutar.bas));
+      const adParca = adTemizle(kalan);
       const ad = harfSayisi(adParca) >= 2 ? adParca : sadeceAd ?? '';
-      ogeler.push({ tip: 'kalem', kalem: kalemOlustur(ad, tutar.tutar, kdvBul(satir)) });
+      ogeler.push({ tip: 'kalem', kalem: kalemOlustur(ad, tutar.tutar, kdv) });
       continue;
     }
 
@@ -333,4 +344,27 @@ export function kalemAciklamasi(satici: string | null, k: FisKalemi): string {
   if (k.indirim > 0) detay.push(`${formatSayi(k.brut)} - ${formatSayi(k.indirim)} indirim`);
   const govde = detay.length ? `${k.ad} (${detay.join('; ')})` : k.ad;
   return satici ? `${satici} - ${govde}` : govde;
+}
+
+/**
+ * Kalemler toplamı fiş toplamını tutmuyorsa, tek bir kalemdeki tipik OCR hatası (fazladan okunmuş
+ * bir rakam ya da yanlış okunmuş tek rakam) farkı tam olarak açıklıyor mu diye bakar.
+ * Yalnızca TEK bir olası düzeltme varsa önerir (kendiliğinden uygulanmaz).
+ */
+export function farkDuzeltmeOnerisi(tutarlar: number[], toplam: number): { index: number; eski: number; yeni: number } | null {
+  const fark = toplam - tutarlar.reduce((t, x) => t + x, 0);
+  if (fark === 0) return null;
+  const adaylar = new Map<string, { index: number; eski: number; yeni: number }>();
+  tutarlar.forEach((eski, index) => {
+    const s = String(eski);
+    const ekle = (y: string) => {
+      const yeni = parseInt(y, 10);
+      if (y && yeni > 0 && yeni !== eski && yeni - eski === fark) adaylar.set(`${index}:${yeni}`, { index, eski, yeni });
+    };
+    for (let i = 0; i < s.length; i++) {
+      ekle(s.slice(0, i) + s.slice(i + 1)); // fazladan rakam
+      for (let r = 0; r <= 9; r++) ekle(s.slice(0, i) + r + s.slice(i + 1)); // yanlış rakam
+    }
+  });
+  return adaylar.size === 1 ? [...adaylar.values()][0] : null;
 }

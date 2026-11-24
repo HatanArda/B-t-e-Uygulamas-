@@ -122,3 +122,52 @@ describe('toplam tutmazsa fark gösterilir', () => {
     expect(r.fark).toBe(6995);
   });
 });
+
+describe('gerçek OCR çıktısı (uçtan uca testte Tesseract\'ın okuduğu metin)', () => {
+  // Tesseract "%1"i "S1"/"s1", "%20"yi "5520", "Q"yu "O" okudu; satır sonlarında "—" çöpü var.
+  const OCR = `MİGROS TİCARET A.Ş.
+
+GELİBOLU / ÇANAKKALE
+TARİH:18.11.2026    SAAT:14:32
+FİŞ NO:0045
+A.FIST JUMBO        S1 — *299,90
+SEK OUARK CILEK     S1    *67,90
+2 AD X 87,90
+SEK OUARK PROTEIN s1   *175,80
+1,130 KG X 139,95
+MUZ ITHAL           S1 —*158,14
+AVOKADO             S1    *69,95
+POSET               5520    *1,00
+TOPKDV                     *8,12
+TOPLAM                   *772,69
+KREDİ KARTI              *772,69
+KART NO : KKKK KKKK KKKK 1234`;
+  const r = fisAyristir(OCR);
+  it('KDV ve çöp karakterler addan ayrılır, toplam tutar', () => {
+    expect(r.kalemler.map((k) => [k.ad, k.kdv])).toEqual([
+      ['A.FIST JUMBO', 1], ['SEK OUARK CILEK', 1], ['SEK OUARK PROTEIN', 1], ['MUZ ITHAL', 1], ['AVOKADO', 1], ['POSET', 20],
+    ]);
+    expect(r.fark).toBe(0);
+    expect(r.odeme.son4).toBe('1234');
+  });
+  it('ürün adındaki sayı KDV sanılmaz', () => {
+    const r2 = fisAyristir('X MARKET\n01.01.2026 10:00\nSEK QUARK PROTEIN 16 %1 *87,90\nERIKLI SU 5 %1 *20,00\nTOPLAM *107,90');
+    expect(r2.kalemler.map((k) => k.ad)).toEqual(['SEK QUARK PROTEIN 16', 'ERIKLI SU 5']);
+  });
+});
+
+describe('fark düzeltme önerisi', () => {
+  it('fazladan okunan rakam (299,90 → 2099,90)', async () => {
+    const { farkDuzeltmeOnerisi } = await import('../../src/lib/fisAyristir');
+    expect(farkDuzeltmeOnerisi([209990, 6790, 17580, 15814, 6995, 100], 77269)).toEqual({ index: 0, eski: 209990, yeni: 29990 });
+  });
+  it('belirsizse öneri yok', async () => {
+    const { farkDuzeltmeOnerisi } = await import('../../src/lib/fisAyristir');
+    expect(farkDuzeltmeOnerisi([1000, 1000], 2900)).toBeNull(); // iki kalemden biri olabilir
+    expect(farkDuzeltmeOnerisi([1000, 2000], 3000)).toBeNull(); // zaten tutuyor
+  });
+  it('"820" → %20', () => {
+    const r = fisAyristir('X\n01.01.2026 10:00\nPOSET               820 — *1,00\nTOPLAM *1,00');
+    expect(r.kalemler[0]).toMatchObject({ ad: 'POSET', kdv: 20 });
+  });
+});
