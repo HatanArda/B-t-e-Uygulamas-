@@ -10,3 +10,4 @@ tests/fixtures/
 test-results/
 .DS_Store
 *.local
+*.tsbuildinfo

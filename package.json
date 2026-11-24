@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "node tests/e2e/run.mjs",
+    "test:all": "npm test && npm run build && npm run e2e",
     "postinstall": "node scripts/copy-ocr-assets.mjs"
   },
   "dependencies": {

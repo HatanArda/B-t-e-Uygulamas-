@@ -1,0 +1,22 @@
+# Netlify: depoyu bağlayınca bu ayarlarla derlenir. (npm install sırasında OCR dosyaları public/ocr'a kopyalanır.)
+[build]
+  command = "npm ci && npm test && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Service worker her zaman tazelensin ki güncellemeler gelsin
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    X-Robots-Tag = "noindex, nofollow"
+    Permissions-Policy = "camera=(self), geolocation=(), microphone=()"
